@@ -1,0 +1,26 @@
+{
+  "name": "figma-export-psd",
+  "version": "1.2.5",
+  "description": "Figma 画板导出为分层 Photoshop PSD 的中文插件（基于 Layerport, MIT）。Figma frames to layered, editable PSD — Chinese localised build with font fallback.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "author": "Sam Gray (https://x.com/samuelgrayart); Chinese localisation & enhancements by dqkevin62-afk",
+  "license": "MIT",
+  "dependencies": {
+    "ag-psd": "^25.0.0"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.100.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dqkevin62-afk/figma-export-psd.git"
+  }
+}

@@ -1,0 +1,207 @@
+<meta charset="utf-8">
+<style>
+  :root {
+    color-scheme: dark;
+    --lp-g1: #5b5bf6;
+    --lp-g2: #22d3ee;
+    --lp-grad: linear-gradient(135deg, var(--lp-g1), var(--lp-g2));
+    --c-bg: #2c2c2c;
+    --c-bg-secondary: #383838;
+    --c-border: #444444;
+    --c-text: #ffffff;
+    --c-text-secondary: #b3b3b3;
+    --c-text-tertiary: #8a8a8a;
+    --c-text-success: #79d297;
+    --c-text-danger: #ff8a8a;
+    --c-bg-success-tertiary: #1f3a2a;
+    --c-bg-danger-tertiary: #4a2323;
+    --c-bg-warning-tertiary: #3f3416;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font: 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+    margin: 0;
+    padding: 12px 16px 10px;
+    color: var(--c-text);
+    background: var(--c-bg);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  main { flex: 1; min-height: 0; overflow-y: auto; }
+  header { display: flex; align-items: center; gap: 10px; }
+  header svg { flex: none; border-radius: 6px; }
+  h1 { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: -0.3px; }
+  .tag { font-size: 11px; color: var(--c-text-secondary); margin-top: 1px; }
+  .intro { color: var(--c-text-secondary); margin: 8px 0 10px; line-height: 1.4; }
+  .card {
+    border: 1px solid var(--c-border);
+    border-radius: 8px;
+    padding: 8px 12px 9px;
+    margin-bottom: 8px;
+  }
+  .card h2 {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
+    color: var(--c-text-tertiary);
+    margin: 0 0 4px;
+  }
+  label {
+    display: flex; gap: 7px; align-items: center;
+    min-height: 26px; white-space: nowrap;
+  }
+  label .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  label .note { color: var(--c-text-tertiary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+  label > select, label > input[type='text'] { margin-left: auto; }
+  input[type='checkbox'] { accent-color: var(--lp-g1); margin: 0; flex: none; }
+  .hint { color: var(--c-text-secondary); margin: 3px 0 6px; line-height: 1.4; white-space: normal; }
+  .sub { font-size: 11px; color: var(--c-text-tertiary); margin: 0 0 2px 21px; line-height: 1.35; }
+  input[type='text'], textarea, select {
+    color: var(--c-text);
+    background: var(--c-bg-secondary);
+    border: 1px solid var(--c-border);
+    border-radius: 5px;
+    font: 11px ui-monospace, monospace;
+    padding: 4px 7px;
+  }
+  input[type='text'] { width: 62%; }
+  textarea { width: 100%; height: 46px; font-size: 10px; display: block; margin-bottom: 6px; }
+  select { padding: 3px 4px; }
+  button.primary {
+    background: var(--lp-grad);
+    color: #fff;
+    border: 0; border-radius: 7px;
+    padding: 10px 16px;
+    font-size: 13px; font-weight: 600;
+    cursor: pointer; width: 100%;
+    letter-spacing: 0.1px;
+    margin-top: 2px;
+    position: relative;
+    overflow: hidden;
+  }
+  button.primary:hover { filter: brightness(1.06); }
+  button.primary .btn-fill {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
+    background: rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+  }
+  button.primary .btn-label { position: relative; }
+  button.secondary {
+    background: var(--c-bg-secondary);
+    color: var(--c-text);
+    border: 1px solid var(--c-border);
+    border-radius: 5px;
+    font-weight: 500; padding: 5px 10px; width: auto; font-size: 11px; cursor: pointer;
+  }
+  #renameMapStatus { color: var(--c-text-success); font-weight: 600; }
+  .progress { margin-top: 8px; display: none; }
+  .progress .ptext { font-size: 11px; color: var(--c-text-secondary); margin-top: 4px; }
+  #selInfo { font-size: 11px; color: var(--c-text-secondary); margin: 8px 0 6px; line-height: 1.4; }
+  .alert {
+    border: 1px solid var(--c-border);
+    border-radius: 6px;
+    padding: 7px 9px;
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 1.45;
+    background: var(--c-bg-secondary);
+    color: var(--c-text);
+  }
+  .alert.red { border-color: #8a3a3a; background: var(--c-bg-danger-tertiary); color: #ffb0b0; }
+  .alert.ok { border-color: #2f5a3f; background: var(--c-bg-success-tertiary); color: #bfe9cd; }
+  .alert ul { margin: 4px 0 0; padding-left: 15px; }
+  .alert li { margin: 2px 0; word-break: break-all; }
+  .alert .tail { margin-top: 4px; opacity: 0.85; }
+  .result { margin-top: 8px; }
+  .result .line { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--c-text-secondary); flex-wrap: wrap; }
+  .result .cnt { font-weight: 700; color: var(--c-text); font-size: 12px; }
+  .result .dots { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+  .result .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .result .dot.g { background: #4ade80; }
+  .result .dot.r { background: #f87171; }
+  .result .more { font-size: 10px; color: var(--c-text-tertiary); }
+  #selList .row { font-size: 11px; font-family: ui-monospace, monospace; }
+  #logDetails { margin-top: 6px; }
+  #logDetails summary { font-size: 11px; color: var(--c-text-secondary); }
+  #log { margin-top: 6px; }
+  #log:empty { margin-top: 0; }
+  .row {
+    padding: 6px 8px; border-radius: 5px;
+    background: var(--c-bg-secondary);
+    margin-bottom: 4px;
+  }
+  .ok { background: var(--c-bg-success-tertiary); color: var(--c-text); }
+  .err { background: var(--c-bg-danger-tertiary); color: var(--c-text-danger); }
+  .warn { background: var(--c-bg-warning-tertiary); font-size: 11px; color: var(--c-text); }
+  details { margin: 2px 0 0; }
+  summary { cursor: pointer; font-weight: 500; line-height: 22px; }
+</style>
+<header>
+  <svg width="32" height="32" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="128" height="128" rx="26" fill="#5B5BF6"/>
+    <text x="64" y="48" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="27" font-weight="700" fill="#FFFFFF" letter-spacing="1">FIGMA</text>
+    <text x="64" y="80" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="28" font-weight="700" fill="#FFFFFF">&#8594;</text>
+    <text x="64" y="114" text-anchor="middle" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="33" font-weight="700" fill="#FFFFFF" letter-spacing="1">PSD</text>
+  </svg>
+  <div>
+    <h1>Figma 导出 PSD 插件工具</h1>
+    <div class="tag">分层 PSD 导出</div>
+  </div>
+</header>
+<main>
+<div class="intro">
+  选中画板（Frame）或分区（Section）后导出。文字保持可编辑，图片以高分辨率
+  智能对象嵌入，图层组与混合模式完整保留。批量导出会打包成一个 ZIP。
+</div>
+
+<div class="card">
+  <h2>输出</h2>
+  <label title="整个 PSD 放大一倍，包括文字字号。"><input type="checkbox" id="scale2"> <span class="lbl">以 2x 导出</span> <span class="note">整个 PSD，含文字</span></label>
+  <label><span class="lbl">分辨率标记</span>
+    <select id="dpi"><option value="72" selected>72 PPI（屏幕）</option><option value="150">150 PPI</option><option value="300">300 PPI（印刷）</option></select>
+  </label>
+  <label><input type="checkbox" id="includeHidden"> <span class="lbl">包含隐藏图层</span> <span class="note">保留为 PSD 隐藏图层</span></label>
+  <label title="After Effects 只读取预览像素，因此图片图层会按画布分辨率导出为普通像素图层而非智能对象。建议搭配 2x 使用，留足缩放余量。"><input type="checkbox" id="aePreset"> <span class="lbl">After Effects 交接</span> <span class="note">像素图层，不用智能对象</span></label>
+</div>
+
+<div class="card">
+  <h2>附加文件</h2>
+  <label><input type="checkbox" id="jpgProof"> <span class="lbl">JPG 预览图</span>
+    <select id="jpgScale"><option value="1" selected>1x</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option></select>
+  </label>
+  <label><input type="checkbox" id="pngProof"> <span class="lbl">PNG 预览图</span>
+    <select id="pngScale"><option value="1" selected>1x</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option></select>
+  </label>
+  <label title="TIFF 会带上上面的分辨率标记，按印刷尺寸打开。CMYK 采用标准转换公式而非 ICC 配置文件；最终分色请用色彩管理工具处理。"><input type="checkbox" id="tiffOut"> <span class="lbl">扁平化 TIFF</span>
+    <select id="tiffMode"><option value="rgb" selected>RGB</option><option value="cmyk">CMYK（标准转换）</option></select>
+  </label>
+</div>
+
+<div class="card">
+  <h2>命名</h2>
+  <label><span class="lbl">文件名模板</span> <input type="text" id="nameTemplate" value="{frame}" spellcheck="false"></label>
+  <div class="sub" style="margin-left:0">可用变量：{frame} 画板名 {page} 页面名 {date} 日期 {n} 序号 {width} 宽 {height} 高</div>
+  <details>
+    <summary>批量重命名映射 <span id="renameMapStatus"></span></summary>
+    <div class="hint">
+      名称中带 [#ID] 标记的画板，会按该 ID 映射的文件名导出，优先级高于模板。
+      粘贴 JSON（{"123": "文件名"}）或 CSV 行（id,文件名）。
+    </div>
+    <textarea id="renameMapBox" placeholder='{"123": "hero_banner_wk36"}'></textarea>
+    <button class="secondary" id="saveRenameMap">保存重命名映射</button>
+  </details>
+</div>
+
+<div id="selInfo"></div>
+<button class="primary" id="go"><span class="btn-fill" id="btnFill"></span><span class="btn-label" id="btnLabel">导出选中内容为 PSD</span></button>
+<div id="fontBox" class="alert" style="display: none"></div>
+<div class="progress" id="progress">
+  <div class="ptext" id="progressText"></div>
+</div>
+<div class="result" id="result" style="display: none"></div>
+<details id="logDetails">
+  <summary id="logSummary">点击查看详细信息</summary>
+  <div id="selList"></div>
+  <div id="log"></div>
+</details>
+</main>
+<!--SCRIPT-->

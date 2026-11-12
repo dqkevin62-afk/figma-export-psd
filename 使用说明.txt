@@ -1,0 +1,554 @@
+﻿================================================================
+ Figma 导出 PSD 插件工具   v1.2.5
+ 使用说明（中文）
+================================================================
+
+本插件基于开源项目 Layerport（MIT 许可证）汉化并增强，
+用于把 Figma 画板导出为分层的 Photoshop PSD 文件，
+保留图层组、画板裁剪蒙版、可编辑文字、智能对象图片与纯色矢量形状。
+
+英文说明见本文件后半部分（ENGLISH GUIDE）。
+
+
+----------------------------------------------------------------
+ 一、如何安装插件
+----------------------------------------------------------------
+
+【这些文件分别是什么】
+
+Layerport-Figma2PSD-v1.2.5-中文版\
+├─ manifest.json     插件入口声明（导入时选的就是这个文件）
+├─ dist\code.js      插件主逻辑（在 Figma 沙箱里运行）
+├─ dist\ui.html      插件界面 + PSD 生成器
+└─ 使用说明.txt       本文件
+
+注意：manifest.json 不能单独使用。它指向 dist 里的两个文件，
+三个文件必须放在一起；整个文件夹可以整体移动或复制到任意位置，
+但不要只拷走 manifest.json。
+
+
+【安装步骤】（只需做一次）
+
+1. 打开 Figma 桌面应用。浏览器版 Figma 不支持导入本地插件。
+2. 顶部菜单：Plugins → Development → Import plugin from manifest…
+   （中文版 Figma 为：插件 → 开发 → 从 manifest 导入插件）
+3. 在弹出的文件选择框里选中本文件夹的 manifest.json。
+   要选文件本身，不要选文件夹。
+4. 导入成功后，插件出现在 Plugins → Development 列表里，
+   点击「Figma 导出 PSD 插件工具」即可打开面板。
+   之后每次使用都从这里运行。
+
+
+【升级到新版本】
+
+1. Plugins → Development → 在旧插件上右键 → Remove（移除）
+2. 用新版本文件夹里的 manifest.json 重新 Import
+3. 关闭已打开的面板，重新运行插件
+
+提示：不要用新文件覆盖旧文件夹里的内容。Figma 可能仍然读取缓存里的
+旧界面，导致看起来「改了没生效」。
+
+
+【卸载】
+
+Plugins → Development → 在插件上右键 → Remove，
+然后删除本文件夹即可，不留任何系统残留。
+
+
+----------------------------------------------------------------
+ 二、插件功能详细介绍
+----------------------------------------------------------------
+
+【1. 选中信息实时显示】
+
+打开面板后，标题下方显示当前选中的整体情况，例如：
+
+  已选 5 个画板 · 共 63 个图层 · 尺寸 1024×1024 ~ 1920×1080
+
+· 画板数量：选中的画板 / 分区数量
+· 图层总数：所有选中画板内部的图层合计
+· 尺寸：各画板尺寸一致时显示单一尺寸，不一致时显示范围
+· 展开「点击查看详细信息」可逐个查看：
+  画板名 — 宽×高，N 个图层
+· 可以直接选中分区（Section），插件会自动展开其中的画板再导出
+
+
+【2. 导出选项】
+
+[输出]
+
+· 以 2x 导出
+  整个 PSD 放大一倍，文字字号同步放大，适合需要放大查看的交付。
+
+· 分辨率标记
+  72 PPI（屏幕）/ 150 PPI / 300 PPI（印刷）。
+  只写入元数据，不改变实际像素大小。
+
+· 包含隐藏图层
+  设计里隐藏的图层会作为 PSD 隐藏图层保留，而不是被丢弃。
+
+· After Effects 交接
+  图片图层按画布分辨率导出为普通像素图层，不使用智能对象，
+  因为 After Effects 只读取预览像素。建议同时勾选「以 2x 导出」，
+  给后续缩放留余量。
+
+[附加文件]
+
+· JPG 预览图 / PNG 预览图
+  额外出 1x–4x 的预览图，方便快速查看或发给别人。
+
+· 扁平化 TIFF
+  额外合成一张扁平图，可选 RGB 或 CMYK。
+  CMYK 使用标准公式换算，不是 ICC 配置文件；
+  正式印刷分色请再走色彩管理流程。
+
+[命名]
+
+· 文件名模板，可用变量：
+  {frame} 画板名    {page} 页面名    {date} 日期
+  {n} 序号          {width} 宽        {height} 高
+  默认模板为 {frame}，即直接用画板名做文件名。
+
+· 批量重命名映射
+  名称里带 [#ID] 的画板按映射改名，优先级高于文件名模板。
+  支持粘贴 JSON（如 {"123":"hero_banner"}）或 CSV（id,文件名）。
+  点「保存重命名映射」后会被记住，下次打开插件仍然有效。
+
+
+【3. 导出流程与进度】
+
+1. 在 Figma 里选中一个或多个画板 / 分区。
+2. 设置好导出选项。
+3. 点击「导出选中内容为 PSD」。
+4. 进度条直接画在这个按钮上：从左往右填充，文字变为「导出中 42%」，
+   全部结束时变为「导出完成 100%」（进度以画板为单位推进）。
+5. 导出完成后文件自动下载到浏览器默认下载目录：
+   · 单个画板：直接得到一个 .psd 文件
+   · 多个画板：打包成一个 ZIP 下载
+     （Figma 每次导出只允许保存一次文件，所以必须打包）
+6. 用 Photoshop 打开该 PSD 文件。
+
+
+【4. 结果统计、完成音效与失败原因】
+
+导出结束后，按钮下方会显示本次结果：
+
+· 绿色圆点 = 成功文件数，红色圆点 = 失败文件数
+  一个圆点对应一个文件（超过 80 个时显示为 +N），
+  后面跟着总大小，例如：成功 2 ● ● 失败 1 ●
+· 同时播放完成音效（现场合成，不依赖音频文件）：
+  全部成功 = 上行两声；有失败 = 下行两声，一听就能分辨
+· 「点击查看详细信息」会展开完整记录，包含：
+  · 每个画板一行：文件名 → PSD（体积、智能对象数量、附加文件类型）
+  · 每个失败画板：具体原因 + 对应的解决办法
+    （内存不足、图层已被删除、权限问题、图片链接失效等，
+     都已归类翻译成中文说明与处理建议）
+  · 警告信息：旋转图层被栅格化、渐变文字按黑色导出等
+  · 字体替换记录：哪个字体被换成了什么
+· 有失败时标题会变成
+  「点击查看详细信息（含 N 项失败原因与解决办法）」
+
+
+【5. 字体预检与自动替换（重点）】
+
+导出开始时，插件会先比对「设计里用到的字体」和「本机已安装的字体」：
+
+· 全部已安装
+  显示绿色提示：字体检查通过：N 个字体本机均已安装，
+  文字可在 Photoshop 里正常显示。
+· 有字体缺失
+  显示红色警告块，逐个列出缺失字体，并写明
+  「原字体 → 已替换为 XX」；若只是缺某个字重，
+  会优先换用同家族的其它字重，保住原有字形。
+
+缺失字体会在写入 PSD 之前自动替换成本机系统字体
+（中文→微软雅黑，英文/数字→Arial，需要粗体时用对应 Bold），因此：
+
+· Photoshop 打开 PSD 不会再提示缺字体，文字一定显示得出来
+· 代价是这些文字的字形变成了替换后的字体
+
+想保留原始字形：安装对应字体后重新导出一次，即自动恢复原样。
+装完字体需要完全退出并重开 Photoshop，它才会重新扫描字体。
+常见免费商用字体：Noto Sans SC（思源黑体）、Inter、Barlow Condensed。
+
+
+【6. 隐私】
+
+插件完全本地运行，不联网、不上传任何设计数据。
+manifest 中已声明 allowedDomains: ["none"]。
+
+
+----------------------------------------------------------------
+ 三、导出之后怎么用
+----------------------------------------------------------------
+
+【Photoshop】
+
+直接打开 .psd 即可。图层组、画板裁剪蒙版、可编辑文字、
+智能对象图片、混合模式都保留；文字是可编辑文字图层，
+本机装有对应字体时可以直接改字、改字号、改颜色。
+
+【After Effects】
+
+1. 导出时勾选「After Effects 交接」（建议同时勾选「以 2x 导出」）。
+2. AE 中：文件 → 导入 → 文件，选择导出的 PSD。
+3. 导入选项选「合成 - 保持图层大小」
+   （Composition – Retain Layer Sizes）。
+4. 打开导入后的合成，每个图层都能单独编辑、做动效。
+
+【Premiere Pro】
+
+1. Premiere 中：文件 → 导入，选择导出的 PSD。
+2. 按需要选择导入方式：
+   · 单个图层（Individual Layers）：每个图层作为独立素材
+   · 序列（Sequence）：生成一个分层的时间线序列
+   · 合并所有图层（Merge All Layers）：作为一张图片导入
+
+
+----------------------------------------------------------------
+ 四、已知限制
+----------------------------------------------------------------
+
+· 旋转过的图层会栅格化导出：外观保留，但不再是矢量或文字图层。
+· 只有纯色填充和描边的形状才导出为可编辑矢量；
+  复杂矢量样式（渐变、多重描边、效果等）会以图片导出以保证外观一致。
+· 文字只支持纯色填充；渐变或图案填充的文字会按黑色导出。
+· 进度以画板为单位推进，单个画板内部没有更细的进度。
+· 画板特别大、又同时开启 2x 与预览图时，可能因内存不足失败，
+  建议分批导出（失败原因会在详细信息里写清楚）。
+
+
+----------------------------------------------------------------
+ 五、常见问题
+----------------------------------------------------------------
+
+Q：导入时提示 manifest 无效？
+A：确认选的是 manifest.json 文件本身，并且 dist\ 里的两个文件存在、
+   没有被移动或删除。
+
+Q：面板打开后是空的 / 一直转圈？
+A：关闭面板重新打开；仍不行就在 Plugins → Development 里移除插件，
+   再重新导入一次。
+
+Q：导出的 PSD 里文字是空的？
+A：说明 PSD 里写入了本机没有的字体。v1.2.5 起会自动替换为系统字体，
+   正常不会出现；若仍然出现，说明运行的是旧版本插件，
+   请移除后重新导入 v1.2.5。
+
+Q：批量导出的 ZIP 里中文文件名是乱码？
+A：v1.2.3 已修复（补写 ZIP 的 UTF-8 标志位）。
+   已经导出的旧 ZIP 无法救回，重新导出一次即可。
+   用 7-Zip 解压通常不受影响，Windows 资源管理器需要 v1.2.3 以上导出的 ZIP。
+
+Q：导出失败，原因写「内存不足」？
+A：取消「以 2x 导出」、关闭预览图，或把画板分批导出。
+
+Q：想修改文案或功能？
+A：改源码目录 F:\2026-11-11-21-02-37\layerport 里的 src，再执行
+   npm run build，然后把 dist 里两个文件拷进插件文件夹。
+   不要直接改 dist，下次构建会被覆盖。
+
+
+----------------------------------------------------------------
+ 六、版本记录
+----------------------------------------------------------------
+
+v1.2.5  2026-11-12  缺字体标红提示 + 缺失字体自动替换系统字体 +
+                    完成音效 + 成功/失败圆点 + 失败原因与解决办法 +
+                    进度条移到导出按钮并显示百分比
+v1.2.4  2026-11-11  按钮进度条 + 折叠详细信息 + 选中信息显示 +
+                    改名为「Figma 导出 PSD 插件工具」并重绘图标
+v1.2.3  2026-11-11  修复批量 ZIP 中文文件名乱码（UTF-8 标志位）
+v1.2.2  2026-11-11  导出结束时字体清单提示
+v1.2.0  2026-11-11  全界面中文化
+
+上游项目：https://github.com/graymade/layerport （MIT License）
+
+================================================================
+ English guide starts below / 以下为英文说明
+================================================================
+================================================================
+ Figma to Layered PSD Export Plugin   v1.2.5
+ User Guide (ENGLISH)
+================================================================
+
+This plugin is a localised and enhanced build of the open-source project
+Layerport (MIT licence). It exports Figma frames as layered Photoshop PSD
+files, keeping layer groups, frame clipping masks, live text, Smart Object
+images and solid-fill vector shapes.
+
+Chinese guide is in the first half of this file.
+
+
+----------------------------------------------------------------
+ 1. How to install the plugin
+----------------------------------------------------------------
+
+[What these files are]
+
+Layerport-Figma2PSD-v1.2.5-中文版\
+|- manifest.json     plugin manifest (this is the file you import)
+|-- dist\code.js     plugin logic (runs inside the Figma sandbox)
+|-- dist\ui.html     plugin UI + PSD writer
+'-- 使用说明.txt      this file
+
+Note: manifest.json cannot be used on its own; it points to the two files
+in dist\. All three files must stay together. The whole folder can be
+moved or copied anywhere, but do not copy manifest.json alone.
+
+
+[Installation steps] (once only)
+
+1. Open the Figma DESKTOP app. The browser version cannot import local
+   plugins.
+2. Menu: Plugins -> Development -> Import plugin from manifest...
+3. In the file dialog, select manifest.json inside this folder.
+   Pick the file itself, not the folder.
+4. The plugin now appears under Plugins -> Development. Click
+   "Figma 导出 PSD 插件工具" to open the panel, and run it from there
+   every time afterwards.
+
+
+[Upgrading]
+
+1. Plugins -> Development -> right-click the old plugin -> Remove.
+2. Import the manifest.json from the new folder.
+3. Close the open panel and run the plugin again.
+
+Do not overwrite files inside the old folder: Figma may keep serving a
+cached copy of the old UI, which looks like "my change did nothing".
+
+
+[Uninstalling]
+
+Plugins -> Development -> right-click -> Remove, then delete this folder.
+Nothing is left behind on the system.
+
+
+----------------------------------------------------------------
+ 2. Feature overview
+----------------------------------------------------------------
+
+[1. Live selection info]
+
+After opening the panel, the line under the title shows the current
+selection, for example:
+
+  Selected 5 frames | 63 layers in total | size 1024x1024 ~ 1920x1080
+
+- Frame count: number of selected frames / sections
+- Layer count: total layers inside all selected frames
+- Size: a single size when all frames match, otherwise a range
+- Expand "点击查看详细信息" to list each frame:
+  frame name - width x height, N layers
+- You can select a Section directly; the plugin expands the frames
+  inside it automatically
+
+
+[2. Export options]
+
+[Output]
+
+- Export at 2x
+  Doubles the whole PSD including text sizes. Useful when the delivery
+  needs zoom headroom.
+
+- Resolution tag
+  72 PPI (screen) / 150 PPI / 300 PPI (print).
+  Metadata only; actual pixels are unchanged.
+
+- Include hidden layers
+  Layers hidden in the design are kept as hidden PSD layers instead of
+  being dropped.
+
+- After Effects handoff
+  Image layers are exported as plain pixel layers at canvas resolution
+  instead of Smart Objects, because After Effects only reads preview
+  pixels. Recommended together with "Export at 2x" for scaling headroom.
+
+[Extra files]
+
+- JPG proof / PNG proof
+  Extra proof images at 1x-4x, handy for quick review or sharing.
+
+- Flattened TIFF
+  An extra flattened image in RGB or CMYK.
+  CMYK uses the standard formula, not an ICC profile; run final
+  separations through a colour-managed tool.
+
+[Naming]
+
+- Filename template, available tokens:
+  {frame} frame name   {page} page name    {date} date
+  {n} index            {width} width       {height} height
+  Default template is {frame}, i.e. the frame name is the filename.
+
+- Batch rename map
+  Frames tagged [#ID] are renamed by the map, overriding the template.
+  Paste JSON (e.g. {"123":"hero_banner"}) or CSV (id,filename).
+  Clicking "保存重命名映射" remembers the map for the next session.
+
+
+[3. Export flow and progress]
+
+1. Select one or more frames or sections in Figma.
+2. Set the export options.
+3. Click "导出选中内容为 PSD" (Export selection to PSD).
+4. The progress bar is drawn on that button itself: it fills from left to
+   right and the label becomes "导出中 42%", ending at
+   "导出完成 100%" (progress advances per frame).
+5. The file is downloaded to your browser's default download folder:
+   - Single frame: you get one .psd file
+   - Multiple frames: packed into a single ZIP
+     (Figma allows only one file save per export, so a ZIP is required)
+6. Open the PSD in Photoshop.
+
+
+[4. Result summary, completion sound, failure reasons]
+
+When the run finishes, a summary appears below the button:
+
+- Green dot = number of successful files, red dot = number of failed files.
+  One dot per file (above 80 files it shows +N), followed by the total size.
+- A completion sound plays (synthesised locally, no audio files):
+  two rising notes when everything succeeded, two descending notes when
+  something failed.
+- Expanding "点击查看详细信息" shows the full record:
+  - one line per frame: filename -> PSD (size, Smart Object count,
+    extra file types)
+  - one entry per failed frame: the exact cause plus a suggested fix
+    (out of memory, layer deleted, permission problems, broken image
+    links, etc. are all classified and written in Chinese)
+  - warnings: rotated layers rasterised, gradient text exported as black,
+    and so on
+  - the font substitution log: which font was replaced with what
+- When there are failures the summary title becomes
+  "点击查看详细信息（含 N 项失败原因与解决办法）".
+
+
+[5. Font pre-check and automatic substitution (important)]
+
+At the start of every export the plugin compares the fonts used in the
+design with the fonts installed on this machine:
+
+- All installed
+  A green notice reads "字体检查通过：N 个字体本机均已安装", and the text
+  will display correctly in Photoshop.
+- Missing fonts
+  A red block lists every missing font and what it was replaced with
+  ("original -> replaced by XX"). If only a single weight is missing, the
+  plugin first tries another weight of the same family to keep the shapes.
+
+Missing fonts are substituted with system fonts before being written into
+the PSD (Microsoft YaHei for Chinese, Arial for Latin/numerals, the Bold
+face where needed). Therefore:
+
+- Photoshop no longer reports missing fonts and the text is always visible
+- The trade-off is that those layers render in the substitute font
+
+To keep the original look: install the fonts and export once more.
+After installing fonts you must fully quit and reopen Photoshop so it
+re-scans them.
+Common free fonts: Noto Sans SC, Inter, Barlow Condensed.
+
+
+[6. Privacy]
+
+The plugin runs fully offline and uploads nothing.
+The manifest declares allowedDomains: ["none"].
+
+
+----------------------------------------------------------------
+ 3. Using the exported file
+----------------------------------------------------------------
+
+[Photoshop]
+
+Just open the .psd. Layer groups, frame clipping masks, live text, Smart
+Object images and blend modes are preserved. Text stays editable, so you
+can retype it as long as the font is installed locally.
+
+[After Effects]
+
+1. Enable "After Effects 交接" when exporting (2x recommended).
+2. In AE: File -> Import -> File, pick the PSD.
+3. Choose "Composition - Retain Layer Sizes".
+4. Open the imported composition; every layer is editable and animatable.
+
+[Premiere Pro]
+
+1. In Premiere: File -> Import, pick the PSD.
+2. Choose the import mode you need:
+   - Individual Layers: each layer becomes its own clip
+   - Sequence: builds a layered timeline sequence
+   - Merge All Layers: imports as one flat image
+
+
+----------------------------------------------------------------
+ 4. Known limitations
+----------------------------------------------------------------
+
+- Rotated layers are rasterised: appearance is kept, but they are no
+  longer vector or text layers.
+- Only shapes with solid fill and stroke export as editable vectors;
+  complex vector styles (gradients, multiple strokes, effects) are
+  exported as images so the appearance stays identical.
+- Text supports solid fill only; gradient or pattern filled text is
+  exported as black.
+- Progress advances per frame; there is no sub-frame progress.
+- Very large frames combined with 2x and proof images may run out of
+  memory. Export in smaller batches; the exact cause is written in the
+  details panel.
+
+
+----------------------------------------------------------------
+ 5. Troubleshooting
+----------------------------------------------------------------
+
+Q: "Invalid manifest" when importing?
+A: Make sure you picked the manifest.json file itself and that both files
+   in dist\ exist and were not moved or deleted.
+
+Q: The panel is blank or spins forever?
+A: Close and reopen the panel. If it persists, remove the plugin under
+   Plugins -> Development and import it again.
+
+Q: Text layers are blank in the exported PSD?
+A: The PSD references fonts missing on this machine. Since v1.2.5 they are
+   substituted automatically, so this should not happen any more. If it
+   still does, you are running an older build: remove it and import
+   v1.2.5.
+
+Q: Chinese filenames look garbled inside the batch ZIP?
+A: Fixed in v1.2.3 (UTF-8 flag written into the ZIP header). ZIPs exported
+   before that cannot be repaired; export again. 7-Zip usually guesses the
+   encoding correctly, but Windows Explorer needs a ZIP produced by v1.2.3
+   or later.
+
+Q: Export failed with an out-of-memory reason?
+A: Turn off "Export at 2x", disable the proof images, or export the frames
+   in smaller batches.
+
+Q: I want to change the texts or the behaviour?
+A: Edit src in F:\2026-11-11-21-02-37\layerport, run npm run build, then
+   copy the two files from dist into this plugin folder. Never edit dist
+   directly; it is overwritten on the next build.
+
+
+----------------------------------------------------------------
+ 6. Version history
+----------------------------------------------------------------
+
+v1.2.5  2026-11-12  missing-font warning in red + automatic substitution
+                    with system fonts + completion sound + success/failure
+                    dots + failure reasons with fixes + progress bar moved
+                    onto the export button with a percentage
+v1.2.4  2026-11-11  in-button progress bar, collapsible details, live
+                    selection info, renamed and new icon
+v1.2.3  2026-11-11  fix garbled Chinese filenames in batch ZIP
+v1.2.2  2026-11-11  font list hint after export
+v1.2.0  2026-11-11  full Chinese localisation
+
+Upstream: https://github.com/graymade/layerport (MIT License)
+
+================================================================
