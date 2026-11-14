@@ -631,9 +631,14 @@ onmessage = async (e: MessageEvent) => {
     for (const l of rootLayers) children.push(await toPsdLayer(l, scale, linkedFiles));
     const compImg = await decodePng(msg.composite);
     const compCanvas = imgToCanvas(compImg, compImg.naturalWidth, compImg.naturalHeight);
+    // 修复「Document canvas must have the same size as document」：
+    // 选中的是 Group 时包围盒常是小数（如 571.6×883.7），沙箱
+    // Math.round 报 572×884，而 exportAsync 出来的 PNG 实际像素可能差 1px，
+    // 声明值和真实像素不一致就会让 ag-psd 抛错、整张 PSD 失败。
+    // 文档尺寸直接采用合成画布的真实像素，永远与 imageData 一致。
     const psd: any = {
-      width: msg.width * scale,
-      height: msg.height * scale,
+      width: compCanvas.width,
+      height: compCanvas.height,
       imageData: canvasToImageData(compCanvas),
       imageResources: {
         resolutionInfo: {

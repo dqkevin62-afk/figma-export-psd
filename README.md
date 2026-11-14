@@ -4,7 +4,7 @@
 
 本仓库是开源项目 [Layerport](https://github.com/graymade/layerport)（MIT）的**中文汉化增强版**，针对中文用户补了字体兜底、失败原因解释和导出进度提示。全程本地运行，不联网、不上传任何设计数据。
 
-- 当前版本：**v1.2.6**（2026-11-14）
+- 当前版本：**v1.2.7**（2026-11-14）
 - 许可：MIT（见 [LICENSE](LICENSE)）
 - 完整图文说明：[使用说明.txt](使用说明.txt)（中英双语，中文在前）
 
@@ -120,6 +120,7 @@ npm run typecheck  # 类型检查
 
 | 版本 | 日期 | 内容 |
 |---|---|---|
+| v1.2.7 | 2026-11-14 | 修复导出某些图层组时报错「Document canvas must have the same size as document」：小数包围盒导致声明尺寸与实际像素差 1px，文档尺寸改用导出像素 |
 | v1.2.6 | 2026-11-14 | 修复第二次导出内容错乱（运行令牌+精确确认+过期消息丢弃）、保存位置显示与上次导出记录、修复两处临时节点泄漏 |
 | v1.2.5 | 2026-11-12 | 缺字体标红 + 自动替换系统字体 + 完成音效 + 成败圆点 + 失败原因与解决办法 + 按钮进度条百分比 |
 | v1.2.4 | 2026-11-11 | 按钮进度条、折叠详细信息、选中信息显示、更名与重绘图标 |
@@ -142,7 +143,7 @@ Export Figma frames as **layered Photoshop PSD** files. Layer groups, frame clip
 
 This is a **Chinese-localised, enhanced build** of the open-source project [Layerport](https://github.com/graymade/layerport) (MIT). It runs fully offline and uploads nothing.
 
-- Version: **v1.2.6** (2026-11-14)
+- Version: **v1.2.7** (2026-11-14)
 - Licence: MIT (see [LICENSE](LICENSE))
 - Full guide: [使用说明.txt](使用说明.txt) (Chinese first, English after)
 
@@ -213,6 +214,7 @@ npm run typecheck
 
 | Version | Date | Notes |
 |---|---|---|
+| v1.2.7 | 2026-11-14 | fix "Document canvas must have the same size as document" on fractional-size groups (document size now uses real exported pixels) |
 | v1.2.6 | 2026-11-14 | fix garbled repeated exports (run tokens + strict acks + stale message dropping), save-location display, two temp-node leak fixes |
 | v1.2.5 | 2026-11-12 | missing-font warning + auto substitution + completion sound + success/failure dots + in-button progress |
 | v1.2.4 | 2026-11-11 | in-button progress, collapsible details, selection info, rename & new icon |

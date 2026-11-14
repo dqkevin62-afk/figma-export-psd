@@ -1,6 +1,6 @@
 {
   "name": "figma-export-psd",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "description": "Figma 画板导出为分层 Photoshop PSD 的中文插件（基于 Layerport, MIT）。Figma frames to layered, editable PSD — Chinese localised build with font fallback.",
   "private": true,
   "type": "module",
