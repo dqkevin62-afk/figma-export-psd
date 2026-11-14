@@ -172,7 +172,20 @@ Plugins → Development → 在插件上右键 → Remove，
 常见免费商用字体：Noto Sans SC（思源黑体）、Inter、Barlow Condensed。
 
 
-【6. 隐私】
+【6. 保存位置】
+
+面板底部有「保存位置」卡片，导出前后都会显示文件去向：
+
+· 默认显示「系统下载文件夹」，并记住上一次导出的时间与文件数，
+  例如：上次导出：2026-11-14 11:59 · 3 个文件 · 系统下载文件夹
+· 点击导出时，日志第一行会写明「本次导出将保存到：xxx」
+· 说明：Figma 插件界面运行在官方沙箱里，暂不支持自选文件夹
+  （官方 File System Access API 在插件中不可用）。文件由 Figma 的
+  下载机制保存到系统下载文件夹；如果你的系统下载位置改过
+  （例如设为桌面），文件就会出现在那里。
+
+
+【7. 隐私】
 
 插件完全本地运行，不联网、不上传任何设计数据。
 manifest 中已声明 allowedDomains: ["none"]。
@@ -243,6 +256,11 @@ A：v1.2.3 已修复（补写 ZIP 的 UTF-8 标志位）。
 Q：导出失败，原因写「内存不足」？
 A：取消「以 2x 导出」、关闭预览图，或把画板分批导出。
 
+Q：第一次导出正常，第二次导出内容不对？
+A：v1.2.6 已修复。旧版在导出中断或连续点击时，两轮导出会交叉发送
+   数据导致内容错乱；v1.2.6 起每轮导出带独立令牌，旧运行自动作废，
+   任何情况下重新点导出都是全新干净的一轮。请更新到 v1.2.6。
+
 Q：想修改文案或功能？
 A：改源码目录 F:\2026-11-11-21-02-37\layerport 里的 src，再执行
    npm run build，然后把 dist 里两个文件拷进插件文件夹。
@@ -253,6 +271,12 @@ A：改源码目录 F:\2026-11-11-21-02-37\layerport 里的 src，再执行
  六、版本记录
 ----------------------------------------------------------------
 
+v1.2.6  2026-11-14  修复第二次导出内容错乱（运行令牌 + 精确确认 +
+                    过期消息丢弃）+ 保存位置显示与上次导出记录 +
+                    修复两处临时节点泄漏（缺字体/旋转图层时残留画布）
+v1.2.6  2026-11-14  修复第二次导出内容错乱（运行令牌 + 精确确认 +
+                    过期消息丢弃）+ 保存位置显示与上次导出记录 +
+                    修复两处临时节点泄漏（缺字体/旋转图层时残留画布）
 v1.2.5  2026-11-12  缺字体标红提示 + 缺失字体自动替换系统字体 +
                     完成音效 + 成功/失败圆点 + 失败原因与解决办法 +
                     进度条移到导出按钮并显示百分比
@@ -452,7 +476,23 @@ re-scans them.
 Common free fonts: Noto Sans SC, Inter, Barlow Condensed.
 
 
-[6. Privacy]
+[6. Save location]
+
+A "保存位置" (save location) card near the export button shows where the
+files go:
+
+- By default it reads "系统下载文件夹" (the system download folder) and
+  remembers your last export: time, file count and location.
+- When you click export, the first log line states the destination.
+- Note: the plugin UI runs inside Figma's sandbox, which does not support
+  choosing an arbitrary folder yet (the File System Access API is not
+  available in plugin iframes, confirmed by Figma staff on the official
+  forum). Files go through Figma's download mechanism to the system
+  download folder — if you moved your OS download location (e.g. to the
+  Desktop), files appear there.
+
+
+[7. Privacy]
 
 The plugin runs fully offline and uploads nothing.
 The manifest declares allowedDomains: ["none"].
@@ -525,6 +565,12 @@ A: Fixed in v1.2.3 (UTF-8 flag written into the ZIP header). ZIPs exported
    encoding correctly, but Windows Explorer needs a ZIP produced by v1.2.3
    or later.
 
+Q: The first export is fine but the second one exports wrong content?
+A: Fixed in v1.2.6. Previously, an interrupted export or a second click
+   could interleave two runs and corrupt the output. Since v1.2.6 every
+   run carries its own token, stale runs are discarded, and clicking
+   export always starts a clean run. Please update to v1.2.6.
+
 Q: Export failed with an out-of-memory reason?
 A: Turn off "Export at 2x", disable the proof images, or export the frames
    in smaller batches.
@@ -539,6 +585,10 @@ A: Edit src in F:\2026-11-11-21-02-37\layerport, run npm run build, then
  6. Version history
 ----------------------------------------------------------------
 
+v1.2.6  2026-11-14  fix garbled output on repeated exports (run tokens +
+                    strict acks + stale message dropping), save-location
+                    display with last-export memory, fixed two temp-node
+                    leaks (missing fonts / rotated layers)
 v1.2.5  2026-11-12  missing-font warning in red + automatic substitution
                     with system fonts + completion sound + success/failure
                     dots + failure reasons with fixes + progress bar moved

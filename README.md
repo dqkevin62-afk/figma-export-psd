@@ -4,7 +4,7 @@
 
 本仓库是开源项目 [Layerport](https://github.com/graymade/layerport)（MIT）的**中文汉化增强版**，针对中文用户补了字体兜底、失败原因解释和导出进度提示。全程本地运行，不联网、不上传任何设计数据。
 
-- 当前版本：**v1.2.5**（2026-11-12）
+- 当前版本：**v1.2.6**（2026-11-14）
 - 许可：MIT（见 [LICENSE](LICENSE)）
 - 完整图文说明：[使用说明.txt](使用说明.txt)（中英双语，中文在前）
 
@@ -73,6 +73,14 @@ npm run typecheck  # 类型检查
 - 播放完成音效：全部成功是上行两声，有失败是下行两声
 - 每个失败都写明**原因 + 解决办法**（内存不足、图层被删、权限、图片失效等均已归类为中文说明）
 
+### 保存位置显示
+
+面板底部有「保存位置」卡片：显示文件去向，并记住上一次导出的时间、文件数与位置；点击导出时日志第一行写明「本次导出将保存到：xxx」。Figma 插件沙箱暂不支持自选文件夹（官方 File System Access API 在插件 iframe 中不可用），文件经 Figma 下载机制保存到系统下载文件夹。
+
+### 二次导出可靠性（v1.2.6 修复）
+
+每轮导出带独立运行令牌：确认消息精确匹配、过期运行的残留消息全部丢弃、导出中再次点击会干净地作废旧运行。无论连续导出多少组、中断后重试，输出都不会交叉错乱。
+
 ### 字体兜底（本版重点）
 
 导出前先做字体预检：
@@ -112,6 +120,7 @@ npm run typecheck  # 类型检查
 
 | 版本 | 日期 | 内容 |
 |---|---|---|
+| v1.2.6 | 2026-11-14 | 修复第二次导出内容错乱（运行令牌+精确确认+过期消息丢弃）、保存位置显示与上次导出记录、修复两处临时节点泄漏 |
 | v1.2.5 | 2026-11-12 | 缺字体标红 + 自动替换系统字体 + 完成音效 + 成败圆点 + 失败原因与解决办法 + 按钮进度条百分比 |
 | v1.2.4 | 2026-11-11 | 按钮进度条、折叠详细信息、选中信息显示、更名与重绘图标 |
 | v1.2.3 | 2026-11-11 | 修复批量 ZIP 中文文件名乱码（补写 UTF-8 标志位） |
@@ -133,7 +142,7 @@ Export Figma frames as **layered Photoshop PSD** files. Layer groups, frame clip
 
 This is a **Chinese-localised, enhanced build** of the open-source project [Layerport](https://github.com/graymade/layerport) (MIT). It runs fully offline and uploads nothing.
 
-- Version: **v1.2.5** (2026-11-12)
+- Version: **v1.2.6** (2026-11-14)
 - Licence: MIT (see [LICENSE](LICENSE))
 - Full guide: [使用说明.txt](使用说明.txt) (Chinese first, English after)
 
@@ -181,6 +190,8 @@ npm run typecheck
 - **Failure reasons with fixes** — every failed frame lists the cause and a suggested fix in Chinese.
 - **Font fallback** — missing fonts are listed in a red block before export and substituted with system fonts (Microsoft YaHei for Chinese, Arial for Latin) so the PSD always opens with visible text.
 - **Batch export** — multiple frames are packed into one UTF-8-correct ZIP (Chinese filenames no longer garble in Windows Explorer).
+- **Save-location display** — shows where files go and remembers the last export (time, count, location); Figma's sandbox cannot pick arbitrary folders, so files go to the system download folder.
+- **Reliable repeated exports** — every run carries a token; stale runs are discarded, so exporting group after group never mixes output.
 
 ## 3. After export
 
@@ -198,6 +209,17 @@ npm run typecheck
 - Progress advances per frame; there is no sub-frame progress.
 - Very large frames with 2x and proofs may run out of memory — export in batches.
 
-## 5. Credits
+## 5. Version history
+
+| Version | Date | Notes |
+|---|---|---|
+| v1.2.6 | 2026-11-14 | fix garbled repeated exports (run tokens + strict acks + stale message dropping), save-location display, two temp-node leak fixes |
+| v1.2.5 | 2026-11-12 | missing-font warning + auto substitution + completion sound + success/failure dots + in-button progress |
+| v1.2.4 | 2026-11-11 | in-button progress, collapsible details, selection info, rename & new icon |
+| v1.2.3 | 2026-11-11 | fix garbled Chinese filenames in batch ZIP |
+| v1.2.2 | 2026-11-11 | font list hint after export |
+| v1.2.0 | 2026-11-11 | full Chinese localisation |
+
+## 6. Credits
 
 Based on [graymade/layerport](https://github.com/graymade/layerport) by Sam Gray (MIT). This fork is released under the same licence.

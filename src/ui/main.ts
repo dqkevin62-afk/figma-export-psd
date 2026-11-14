@@ -9,6 +9,9 @@ import { encodeTiff, type TiffMode } from './tiff';
 import { buildZip, type ZipEntry } from './zip';
 
 let renameMap: Record<string, string> = {};
+// 当前导出运行的令牌：begin 时由沙箱下发，piece / done 与之不符即丢弃。
+// 修复「第二次导出内容错乱」：旧运行的残留消息不再进入本轮统计与文件。
+let currentRun = 0;
 // Every file the run produces accumulates here and is delivered ONCE at the
 // end: a single file downloads directly, anything more becomes one ZIP.
 // Figma's plugin sandbox honors only the first synthetic download click per
@@ -223,6 +226,141 @@ function download(blob: Blob, filename: string) {
   a.click();
 }
 
+// ---------- 保存位置（显示 + 记住上一次）----------
+// Figma 插件界面运行在 iframe 里，官方没有开放选择本地文件夹的能力
+// （File System Access API 在插件 iframe 中不可用，Figma 官方论坛已确认，
+//   https://forum.figma.com/questions/42206 ）。
+// 因此按能力自动降级：
+//   · 环境支持 showDirectoryPicker（如普通浏览器）→ 真正选文件夹、直接写入、
+//     句柄存 IndexedDB，下次打开默认继续用上一次的文件夹；
+//   · Figma 插件内 → 如实显示「系统下载文件夹」，并记住上一次导出的
+//     时间与文件数，让用户始终知道文件去了哪里。
+const HAS_FS_API = typeof (window as any).showDirectoryPicker === 'function';
+let dirHandle: any = null; // 上次选择的文件夹句柄（支持的环境）
+let lastExport: { time: number; files: number; where: string } | null = null;
+
+function saveDirText(): string {
+  if (dirHandle && dirHandle.name) return dirHandle.name;
+  return '系统下载文件夹';
+}
+
+function renderSaveDir(): void {
+  $('saveDir').textContent = saveDirText();
+  $('saveDirNote').textContent = HAS_FS_API
+    ? '导出的文件会直接写入上面选的文件夹。'
+    : 'Figma 插件暂不支持自选文件夹：文件由浏览器下载，保存到系统下载文件夹。';
+}
+
+function fmtTime(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => (n < 10 ? '0' + n : String(n));
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+function renderLastExport(): void {
+  $('lastExportNote').textContent = lastExport
+    ? '上次导出：' + fmtTime(lastExport.time) + ' · ' + lastExport.files + ' 个文件 · ' + lastExport.where
+    : '';
+}
+
+// IndexedDB 存文件夹句柄（支持的环境），跨会话记住上一次的文件夹。
+function idb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('layerport', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbGet(key: string): Promise<any> {
+  try {
+    const db = await idb();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction('kv', 'readonly');
+      const r = tx.objectStore('kv').get(key);
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+  } catch (e) {
+    return null;
+  }
+}
+async function idbSet(key: string, val: any): Promise<void> {
+  try {
+    const db = await idb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('kv', 'readwrite');
+      tx.objectStore('kv').put(val, key);
+      tx.oncomplete = () => resolve(undefined);
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    /* 存不进就算了，不影响导出 */
+  }
+}
+
+// 有句柄且权限可用才算就绪（requestPermission 必须发生在用户手势里）。
+async function handleGranted(h: any, request: boolean): Promise<boolean> {
+  if (!h) return false;
+  try {
+    let p = await h.queryPermission({ mode: 'readwrite' });
+    if (p !== 'granted' && request) p = await h.requestPermission({ mode: 'readwrite' });
+    return p === 'granted';
+  } catch (e) {
+    return false;
+  }
+}
+
+// 把文件逐个写进文件夹；全部成功返回 true。
+async function writeToDir(files: ZipEntry[], dir: any): Promise<number> {
+  let n = 0;
+  for (const f of files) {
+    const fh = await dir.getFileHandle(f.name, { create: true });
+    const w = await fh.createWritable();
+    await w.write(f.data as any);
+    await w.close();
+    n++;
+  }
+  return n;
+}
+
+if (HAS_FS_API) {
+  $('pickDir').style.display = '';
+  $('pickDir').onclick = async () => {
+    try {
+      const h = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+      if (h) {
+        dirHandle = h;
+        await idbSet('layerportDir', h);
+        $('reuseDir').style.display = 'none';
+        renderSaveDir();
+      }
+    } catch (e) {
+      /* 用户取消选择 */
+    }
+  };
+  // 恢复上一次的文件夹：已有授权就直接用；没授权给出「继续用」按钮。
+  void (async () => {
+    const h = await idbGet('layerportDir');
+    if (!h) return;
+    if (await handleGranted(h, false)) {
+      dirHandle = h;
+      renderSaveDir();
+    } else {
+      $('reuseDir').style.display = '';
+      $('reuseDir').textContent = '继续用上次的文件夹「' + h.name + '」';
+      $('reuseDir').onclick = async () => {
+        if (await handleGranted(h, true)) {
+          dirHandle = h;
+          $('reuseDir').style.display = 'none';
+          renderSaveDir();
+        }
+      };
+    }
+  })();
+}
+renderSaveDir();
+
 function uniqueName(base: string): string {
   let name = base;
   for (let i = 2; usedNames.has(name); i++) name = base + '-' + i;
@@ -259,6 +397,8 @@ $('go').onclick = () => {
   logSummary.textContent = '点击查看详细信息';
   // 在用户点击这一次手势里初始化音频，完成时才不会被浏览器拦。
   ensureAudio();
+  // 点击导出时明确显示这次文件会去哪里（记住的上一次位置）。
+  addRow('本次导出将保存到：' + saveDirText() + (HAS_FS_API && dirHandle ? '（直接写入）' : '（浏览器下载）'), 'ok');
   settings = {
     dpi: parseInt(selValue('dpi'), 10) || 72,
     tiff: checked('tiffOut'),
@@ -285,10 +425,16 @@ $('go').onclick = () => {
 async function toJpegBytes(pngBytes: Uint8Array): Promise<Uint8Array> {
   const img = await decodePng(pngBytes);
   const canvas = imgToCanvas(img, img.naturalWidth, img.naturalHeight);
-  return await new Promise<Uint8Array>((resolve) => {
+  return await new Promise<Uint8Array>((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
-        blob!.arrayBuffer().then((ab) => resolve(new Uint8Array(ab)));
+        // blob 为 null 时（内存不足等）必须 reject：旧版直接 blob!.arrayBuffer()
+        // 抛错后外层 Promise 永远不结算，沙箱等不到 ack 就卡死。
+        if (!blob) {
+          reject(new Error('JPEG 编码失败（画布过大或内存不足）'));
+          return;
+        }
+        blob.arrayBuffer().then((ab) => resolve(new Uint8Array(ab)), reject);
       },
       'image/jpeg',
       0.92,
@@ -318,6 +464,11 @@ onmessage = async (e: MessageEvent) => {
     $('renameMapStatus').textContent = '（已载入 ' + msg.count + ' 条名称）';
     return;
   }
+  if (msg.type === 'lastExportLoaded') {
+    lastExport = msg.info || null;
+    renderLastExport();
+    return;
+  }
   if (msg.type === 'selection') {
     const frames: { name: string; w: number; h: number; layers: number }[] = msg.frames || [];
     selList.replaceChildren();
@@ -345,6 +496,7 @@ onmessage = async (e: MessageEvent) => {
     return;
   }
   if (msg.type === 'begin') {
+    currentRun = msg.run != null ? msg.run : 0;
     batchCount = msg.count;
     totalCount = msg.count;
     doneCount = 0;
@@ -367,28 +519,45 @@ onmessage = async (e: MessageEvent) => {
     return;
   }
   if (msg.type === 'pieceError') {
+    if (msg.run != null && msg.run !== currentRun) return; // 过期运行的残留
     recordFailure(msg.name, msg.error);
     doneCount++;
     updateProgress();
     return;
   }
   if (msg.type === 'done') {
+    if (msg.run != null && msg.run !== currentRun) return; // 过期运行的残留
     const outBytes = runFiles.reduce((a, f) => a + f.data.length, 0);
     let outCount = 0;
-    if (runFiles.length === 1) {
-      const f = runFiles[0];
-      const ext = f.name.slice(f.name.lastIndexOf('.') + 1);
-      download(new Blob([f.data as BlobPart], { type: MIME[ext] || 'application/octet-stream' }), f.name);
-      addRow('已下载 ' + f.name + '。', 'ok');
-      outCount = 1;
-    } else if (runFiles.length > 1) {
-      outCount = runFiles.length;
-      const zipRow = addRow('正在打包 ' + runFiles.length + ' 个文件…');
-      const zip = buildZip(runFiles);
-      const zipName = batchCount === 1 && runBase ? runBase + '.zip' : 'Layerport_' + runFiles.length + 'files_' + Math.round(zip.size / 1048576) + 'MB.zip';
-      download(zip, zipName);
-      zipRow.textContent = zipName + ' 已下载（' + runFiles.length + ' 个文件打包成一个 ZIP；Figma 每次导出只允许保存一次）。';
-      zipRow.className = 'row ok';
+    let savedToDir = false;
+    // 优先直接写入记住的文件夹（仅在环境支持且已授权时），
+    // 否则走浏览器下载（保存到系统下载文件夹）。
+    if (dirHandle && runFiles.length) {
+      try {
+        const wrote = await writeToDir(runFiles, dirHandle);
+        savedToDir = true;
+        outCount = wrote;
+        addRow('已保存到文件夹「' + dirHandle.name + '」：' + wrote + ' 个文件。', 'ok');
+      } catch (err: any) {
+        addRow('直接写入文件夹失败（' + String((err && err.message) || err) + '），改为浏览器下载。', 'warn');
+      }
+    }
+    if (!savedToDir) {
+      if (runFiles.length === 1) {
+        const f = runFiles[0];
+        const ext = f.name.slice(f.name.lastIndexOf('.') + 1);
+        download(new Blob([f.data as BlobPart], { type: MIME[ext] || 'application/octet-stream' }), f.name);
+        addRow('已下载 ' + f.name + '。', 'ok');
+        outCount = 1;
+      } else if (runFiles.length > 1) {
+        outCount = runFiles.length;
+        const zipRow = addRow('正在打包 ' + runFiles.length + ' 个文件…');
+        const zip = buildZip(runFiles);
+        const zipName = batchCount === 1 && runBase ? runBase + '.zip' : 'Layerport_' + runFiles.length + 'files_' + Math.round(zip.size / 1048576) + 'MB.zip';
+        download(zip, zipName);
+        zipRow.textContent = zipName + ' 已下载（' + runFiles.length + ' 个文件打包成一个 ZIP；Figma 每次导出只允许保存一次）。';
+        zipRow.className = 'row ok';
+      }
     }
     runFiles = [];
     if (!okCount && !failCount) {
@@ -399,12 +568,16 @@ onmessage = async (e: MessageEvent) => {
     btnFill.style.width = '100%';
     btnLabel.textContent = '导出完成 100%';
     progressText.textContent =
-      '导出完成：成功 ' + okCount + ' 个，失败 ' + failCount + ' 个' + (outBytes ? ' · ' + fmtSize(outBytes) : '');
+      '导出完成：成功 ' + okCount + ' 个，失败 ' + failCount + ' 个' + (outBytes ? ' · ' + fmtSize(outBytes) : '') + ' · 已保存到' + (savedToDir ? '「' + dirHandle.name + '」' : saveDirText());
     renderResult();
     logSummary.textContent = failCount
       ? '点击查看详细信息（含 ' + failCount + ' 项失败原因与解决办法）'
       : '点击查看详细信息';
     playDone(failCount === 0 && okCount > 0);
+    // 记住这次导出（时间 / 文件数 / 位置），下次打开插件时显示。
+    lastExport = { time: Date.now(), files: outCount, where: saveDirText() };
+    renderLastExport();
+    parent.postMessage({ pluginMessage: { type: 'saveLastExport', info: lastExport } }, '*');
     return;
   }
   if (msg.type === 'fontCheck') {
@@ -444,6 +617,9 @@ onmessage = async (e: MessageEvent) => {
     return;
   }
   if (msg.type !== 'piece') return;
+  // 过期运行的残留 piece（新一轮导出已开始）：直接丢弃，不进统计也不生成文件。
+  if (msg.run != null && msg.run !== currentRun) return;
+  const pieceRun = msg.run != null ? msg.run : currentRun;
   const row = addRow('正在生成 ' + msg.name + '…');
   try {
     const scale: number = msg.scale || 1;
@@ -500,7 +676,10 @@ onmessage = async (e: MessageEvent) => {
   }
   doneCount++;
   updateProgress();
-  parent.postMessage({ pluginMessage: { type: 'ack' } }, '*');
+  // ack 放在 finally 语义处：无论成功失败都回，且带本 piece 的运行令牌，
+  // 沙箱只认令牌匹配的 ack。旧版任何异常路径都可能漏 ack，沙箱卡死后
+  // 再点导出就会两轮交叉，这就是「第二次导出内容不对」的根因之一。
+  parent.postMessage({ pluginMessage: { type: 'ack', run: pieceRun } }, '*');
 };
 
 // 通知沙箱：UI 已就绪，请推送当前选中信息（画板数 / 图层数 / 尺寸）。

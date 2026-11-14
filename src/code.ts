@@ -20,6 +20,31 @@ let AE_PRESET = false;
 const HI_SCALE = 3;
 const MAX_EDGE = 6000;
 
+// ---------- 导出运行令牌（修复二次导出 bug 的核心）----------
+// 旧版用 figma.ui.once('message') 等待 UI 的确认，但它对「任何」消息都放行：
+// 只要上一轮有一个 piece 没等到确认（界面卡死或用户又点了一次导出），
+// 旧循环就会被错误唤醒，和新一轮导出交叉发送 piece，导致第二次导出
+// 内容错乱。现在每一轮导出发一个递增 runToken：
+//   1) ack 必须带上匹配的 token 才算数；
+//   2) 新一轮导出开始时旧运行直接作废（在每个 piece 前检查）；
+//   3) piece / begin / done 消息都带 token，UI 端丢弃过期运行的残留消息。
+let runToken = 0;
+let ackWait: { token: number; resolve: () => void } | null = null;
+
+function resolveAck(msg: any): void {
+  const w = ackWait;
+  if (!w) return;
+  if (msg.run != null && msg.run !== w.token) return; // 迟到的旧 ack，忽略
+  ackWait = null;
+  w.resolve();
+}
+
+function waitAck(token: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    ackWait = { token, resolve };
+  });
+}
+
 // ---------- 字体预检与替换 ----------
 // 导出前把设计里用到的字体和「Figma 能列出的本机字体」比对：
 // 缺哪个就在界面上标红。同时把这些字体的 PSD 字体名换成系统出厂字体
@@ -352,20 +377,21 @@ async function exportRotated(node: SceneNode, base: { x: number; y: number }, wa
   tmp.resizeWithoutConstraints(Math.max(1, rb.width), Math.max(1, rb.height));
   tmp.x = rb.x;
   tmp.y = rb.y;
-  const clone = node.clone();
-  tmp.appendChild(clone);
-  const t = node.absoluteTransform;
-  clone.relativeTransform = [
-    [t[0][0], t[0][1], t[0][2] - rb.x],
-    [t[1][0], t[1][1], t[1][2] - rb.y],
-  ];
-  clone.visible = true;
+  let bytes: Uint8Array;
   const hi = !AE_PRESET && subtreeHasImage(node);
   const scale = hi ? hiScaleFor(rb.width, rb.height) : EXPORT_SCALE;
-  let bytes: Uint8Array;
   try {
+    const clone = node.clone();
+    tmp.appendChild(clone);
+    const t = node.absoluteTransform;
+    clone.relativeTransform = [
+      [t[0][0], t[0][1], t[0][2] - rb.x],
+      [t[1][0], t[1][1], t[1][2] - rb.y],
+    ];
+    clone.visible = true;
     bytes = await exportPng(tmp, scale);
   } finally {
+    // 无论中途是否抛错，临时 Frame 都必须清掉，否则残留在画布上。
     tmp.remove();
   }
   warnings.push('旋转图层「' + node.name + '」已栅格化导出。');
@@ -390,33 +416,38 @@ async function renderedLines(
   try {
     await figma.loadFontAsync(fontName);
     const m = figma.createText();
-    m.fontName = fontName;
-    m.fontSize = fontSize;
-    if (letterSpacing && letterSpacing.unit) m.letterSpacing = letterSpacing as LetterSpacing;
-    if (lineHeight && lineHeight.unit) m.lineHeight = lineHeight as LineHeight;
-    m.textAutoResize = 'HEIGHT';
-    m.resize(node.width, m.height);
-    m.characters = 'Ag';
-    const oneLine = m.height;
-    const out: string[] = [];
-    const paras = chars.split('\n');
-    for (const para of paras) {
-      const words = para.split(' ');
-      let current = '';
-      for (const word of words) {
-        const test = current ? current + ' ' + word : word;
-        m.characters = test;
-        if (m.height > oneLine * 1.5 && current) {
-          out.push(current);
-          current = word;
-        } else {
-          current = test;
+    try {
+      m.fontName = fontName;
+      m.fontSize = fontSize;
+      if (letterSpacing && letterSpacing.unit) m.letterSpacing = letterSpacing as LetterSpacing;
+      if (lineHeight && lineHeight.unit) m.lineHeight = lineHeight as LineHeight;
+      m.textAutoResize = 'HEIGHT';
+      m.resize(node.width, m.height);
+      m.characters = 'Ag';
+      const oneLine = m.height;
+      const out: string[] = [];
+      const paras = chars.split('\n');
+      for (const para of paras) {
+        const words = para.split(' ');
+        let current = '';
+        for (const word of words) {
+          const test = current ? current + ' ' + word : word;
+          m.characters = test;
+          if (m.height > oneLine * 1.5 && current) {
+            out.push(current);
+            current = word;
+          } else {
+            current = test;
+          }
         }
+        out.push(current);
       }
-      out.push(current);
+      return out.join('\n');
+    } finally {
+      // 字体缺失时 fontName 赋值会抛错；无论成败都必须清掉临时文字节点，
+      // 否则每次导出都会在画布上留下垃圾节点。
+      m.remove();
     }
-    m.remove();
-    return out.join('\n');
   } catch (e) {
     return chars;
   }
@@ -627,7 +658,7 @@ function reportSelection(): void {
   });
 }
 
-async function run() {
+async function run(token: number) {
   fontUses.clear();
   resolveCache.clear();
   const sel = expandSelection();
@@ -638,9 +669,11 @@ async function run() {
   // 字体预检：在真正导出之前就把「缺哪个字体」标红给用户看。
   for (const root of sel) collectFonts(root);
   const indexOk = await loadFontIndex();
+  if (token !== runToken) return; // 已被更新的导出取代
   figma.ui.postMessage({ type: 'fontCheck', ok: indexOk, fonts: indexOk ? fontReport() : [] });
-  figma.ui.postMessage({ type: 'begin', count: sel.length });
+  figma.ui.postMessage({ type: 'begin', run: token, count: sel.length });
   for (let i = 0; i < sel.length; i++) {
+    if (token !== runToken) return; // 已被更新的导出取代，静默退出
     const root = sel[i];
     const t = root.absoluteTransform;
     const base = { x: t[0][2], y: t[1][2] };
@@ -648,6 +681,7 @@ async function run() {
     figma.ui.postMessage({ type: 'status', text: '正在读取 ' + root.name + '（' + (i + 1) + '/' + sel.length + '）…' });
     try {
       const spec = await walk(root, base, warnings);
+      if (token !== runToken) return;
       const composite = await exportPng(root, EXPORT_SCALE);
       // Proofs are PNG bytes at the requested scale; the UI converts the JPG
       // one. Renders are reused when scales coincide.
@@ -658,34 +692,47 @@ async function run() {
       if (PNG_SCALE === EXPORT_SCALE) proofPng = composite;
       else if (PNG_SCALE > 0 && PNG_SCALE === JPG_SCALE) proofPng = proofJpg;
       else if (PNG_SCALE > 0) proofPng = await exportPng(root, PNG_SCALE);
+      if (token !== runToken) return;
       figma.ui.postMessage({
-        type: 'piece', name: root.name, page: figma.currentPage.name, index: i + 1,
+        type: 'piece', run: token, name: root.name, page: figma.currentPage.name, index: i + 1,
         width: Math.round(root.width), height: Math.round(root.height),
         scale: EXPORT_SCALE, spec, composite,
         proofJpg, proofPng, warnings,
       });
-      await new Promise<void>((resolve) => {
-        figma.ui.once('message', () => resolve());
-      });
+      // 只等「本轮 token 的 ack」，其它消息（比如用户又点了一次导出）
+      // 不会再错误地唤醒这里。
+      await waitAck(token);
     } catch (err: any) {
-      figma.ui.postMessage({ type: 'pieceError', name: root.name, error: String((err && err.message) || err) });
+      if (token !== runToken) return;
+      figma.ui.postMessage({ type: 'pieceError', run: token, name: root.name, error: String((err && err.message) || err) });
     }
   }
-  figma.ui.postMessage({ type: 'done' });
+  if (token !== runToken) return;
+  figma.ui.postMessage({ type: 'done', run: token });
 }
 
 figma.ui.onmessage = async (msg: any) => {
   if (!msg) return;
+  if (msg.type === 'ack') {
+    resolveAck(msg);
+    return;
+  }
   if (msg.type === 'export') {
+    // 新一轮导出：令牌 +1，旧运行在下一个检查点自动作废，
+    // 不再和这一轮交叉发消息。
+    runToken++;
     EXPORT_SCALE = msg.scale === 2 ? 2 : 1;
     JPG_SCALE = msg.jpgScale || 0;
     PNG_SCALE = msg.pngScale || 0;
     INCLUDE_HIDDEN = !!msg.includeHidden;
     AE_PRESET = !!msg.aePreset;
-    run();
+    void run(runToken);
   } else if (msg.type === 'saveRenameMap') {
     await figma.clientStorage.setAsync('layerportRenameMap', msg.map);
     figma.ui.postMessage({ type: 'renameMapLoaded', count: Object.keys(msg.map).length });
+  } else if (msg.type === 'saveLastExport') {
+    // 记住上一次导出的信息（时间、文件数、保存位置），下次打开插件时显示。
+    await figma.clientStorage.setAsync('layerportLastExport', msg.info);
   } else if (msg.type === 'ready') {
     reportSelection();
   }
@@ -696,4 +743,6 @@ figma.on('selectionchange', reportSelection);
 (async function init() {
   const map = await figma.clientStorage.getAsync('layerportRenameMap');
   if (map) figma.ui.postMessage({ type: 'renameMapLoaded', count: Object.keys(map).length, map });
+  const last = await figma.clientStorage.getAsync('layerportLastExport');
+  if (last) figma.ui.postMessage({ type: 'lastExportLoaded', info: last });
 })();

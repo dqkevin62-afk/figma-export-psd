@@ -9,6 +9,20 @@
   var AE_PRESET = false;
   var HI_SCALE = 3;
   var MAX_EDGE = 6e3;
+  var runToken = 0;
+  var ackWait = null;
+  function resolveAck(msg) {
+    const w = ackWait;
+    if (!w) return;
+    if (msg.run != null && msg.run !== w.token) return;
+    ackWait = null;
+    w.resolve();
+  }
+  function waitAck(token) {
+    return new Promise((resolve) => {
+      ackWait = { token, resolve };
+    });
+  }
   var CJK_RE = /[\u2e80-\u9fff\uf900-\ufaff\u3000-\u303f\uff00-\uffef]/;
   var _a;
   var IS_MAC = /mac/i.test(String(((_a = globalThis.navigator) == null ? void 0 : _a.platform) || ""));
@@ -286,18 +300,18 @@
     tmp.resizeWithoutConstraints(Math.max(1, rb.width), Math.max(1, rb.height));
     tmp.x = rb.x;
     tmp.y = rb.y;
-    const clone = node.clone();
-    tmp.appendChild(clone);
-    const t = node.absoluteTransform;
-    clone.relativeTransform = [
-      [t[0][0], t[0][1], t[0][2] - rb.x],
-      [t[1][0], t[1][1], t[1][2] - rb.y]
-    ];
-    clone.visible = true;
+    let bytes;
     const hi = !AE_PRESET && subtreeHasImage(node);
     const scale = hi ? hiScaleFor(rb.width, rb.height) : EXPORT_SCALE;
-    let bytes;
     try {
+      const clone = node.clone();
+      tmp.appendChild(clone);
+      const t = node.absoluteTransform;
+      clone.relativeTransform = [
+        [t[0][0], t[0][1], t[0][2] - rb.x],
+        [t[1][0], t[1][1], t[1][2] - rb.y]
+      ];
+      clone.visible = true;
       bytes = await exportPng(tmp, scale);
     } finally {
       tmp.remove();
@@ -321,33 +335,36 @@
     try {
       await figma.loadFontAsync(fontName);
       const m = figma.createText();
-      m.fontName = fontName;
-      m.fontSize = fontSize;
-      if (letterSpacing && letterSpacing.unit) m.letterSpacing = letterSpacing;
-      if (lineHeight && lineHeight.unit) m.lineHeight = lineHeight;
-      m.textAutoResize = "HEIGHT";
-      m.resize(node.width, m.height);
-      m.characters = "Ag";
-      const oneLine = m.height;
-      const out = [];
-      const paras = chars.split("\n");
-      for (const para of paras) {
-        const words = para.split(" ");
-        let current = "";
-        for (const word of words) {
-          const test = current ? current + " " + word : word;
-          m.characters = test;
-          if (m.height > oneLine * 1.5 && current) {
-            out.push(current);
-            current = word;
-          } else {
-            current = test;
+      try {
+        m.fontName = fontName;
+        m.fontSize = fontSize;
+        if (letterSpacing && letterSpacing.unit) m.letterSpacing = letterSpacing;
+        if (lineHeight && lineHeight.unit) m.lineHeight = lineHeight;
+        m.textAutoResize = "HEIGHT";
+        m.resize(node.width, m.height);
+        m.characters = "Ag";
+        const oneLine = m.height;
+        const out = [];
+        const paras = chars.split("\n");
+        for (const para of paras) {
+          const words = para.split(" ");
+          let current = "";
+          for (const word of words) {
+            const test = current ? current + " " + word : word;
+            m.characters = test;
+            if (m.height > oneLine * 1.5 && current) {
+              out.push(current);
+              current = word;
+            } else {
+              current = test;
+            }
           }
+          out.push(current);
         }
-        out.push(current);
+        return out.join("\n");
+      } finally {
+        m.remove();
       }
-      m.remove();
-      return out.join("\n");
     } catch (e) {
       return chars;
     }
@@ -556,7 +573,7 @@
       layers: frames.reduce((a, f) => a + f.layers, 0)
     });
   }
-  async function run() {
+  async function run(token) {
     fontUses.clear();
     resolveCache.clear();
     const sel = expandSelection();
@@ -566,9 +583,11 @@
     }
     for (const root of sel) collectFonts(root);
     const indexOk = await loadFontIndex();
+    if (token !== runToken) return;
     figma.ui.postMessage({ type: "fontCheck", ok: indexOk, fonts: indexOk ? fontReport() : [] });
-    figma.ui.postMessage({ type: "begin", count: sel.length });
+    figma.ui.postMessage({ type: "begin", run: token, count: sel.length });
     for (let i = 0; i < sel.length; i++) {
+      if (token !== runToken) return;
       const root = sel[i];
       const t = root.absoluteTransform;
       const base = { x: t[0][2], y: t[1][2] };
@@ -576,6 +595,7 @@
       figma.ui.postMessage({ type: "status", text: "正在读取 " + root.name + "（" + (i + 1) + "/" + sel.length + "）…" });
       try {
         const spec = await walk(root, base, warnings);
+        if (token !== runToken) return;
         const composite = await exportPng(root, EXPORT_SCALE);
         let proofJpg = null;
         if (JPG_SCALE === EXPORT_SCALE) proofJpg = composite;
@@ -584,8 +604,10 @@
         if (PNG_SCALE === EXPORT_SCALE) proofPng = composite;
         else if (PNG_SCALE > 0 && PNG_SCALE === JPG_SCALE) proofPng = proofJpg;
         else if (PNG_SCALE > 0) proofPng = await exportPng(root, PNG_SCALE);
+        if (token !== runToken) return;
         figma.ui.postMessage({
           type: "piece",
+          run: token,
           name: root.name,
           page: figma.currentPage.name,
           index: i + 1,
@@ -598,27 +620,34 @@
           proofPng,
           warnings
         });
-        await new Promise((resolve) => {
-          figma.ui.once("message", () => resolve());
-        });
+        await waitAck(token);
       } catch (err) {
-        figma.ui.postMessage({ type: "pieceError", name: root.name, error: String(err && err.message || err) });
+        if (token !== runToken) return;
+        figma.ui.postMessage({ type: "pieceError", run: token, name: root.name, error: String(err && err.message || err) });
       }
     }
-    figma.ui.postMessage({ type: "done" });
+    if (token !== runToken) return;
+    figma.ui.postMessage({ type: "done", run: token });
   }
   figma.ui.onmessage = async (msg) => {
     if (!msg) return;
+    if (msg.type === "ack") {
+      resolveAck(msg);
+      return;
+    }
     if (msg.type === "export") {
+      runToken++;
       EXPORT_SCALE = msg.scale === 2 ? 2 : 1;
       JPG_SCALE = msg.jpgScale || 0;
       PNG_SCALE = msg.pngScale || 0;
       INCLUDE_HIDDEN = !!msg.includeHidden;
       AE_PRESET = !!msg.aePreset;
-      run();
+      void run(runToken);
     } else if (msg.type === "saveRenameMap") {
       await figma.clientStorage.setAsync("layerportRenameMap", msg.map);
       figma.ui.postMessage({ type: "renameMapLoaded", count: Object.keys(msg.map).length });
+    } else if (msg.type === "saveLastExport") {
+      await figma.clientStorage.setAsync("layerportLastExport", msg.info);
     } else if (msg.type === "ready") {
       reportSelection();
     }
@@ -627,5 +656,7 @@
   (async function init() {
     const map = await figma.clientStorage.getAsync("layerportRenameMap");
     if (map) figma.ui.postMessage({ type: "renameMapLoaded", count: Object.keys(map).length, map });
+    const last = await figma.clientStorage.getAsync("layerportLastExport");
+    if (last) figma.ui.postMessage({ type: "lastExportLoaded", info: last });
   })();
 })();
